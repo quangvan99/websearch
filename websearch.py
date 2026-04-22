@@ -101,10 +101,22 @@ async def ask(question: str) -> str:
 
 
 async def _main():
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+    raw = False
+    if "--raw" in args:
+        raw = True
+        args = [a for a in args if a != "--raw"]
+    if not args:
         print(__doc__)
         sys.exit(1)
-    question = " ".join(sys.argv[1:])
+    question = " ".join(args)
+    if raw:
+        print(f"[1] search: {question}", file=sys.stderr)
+        hits = await search(question)
+        print(f"    got {len(hits)} results", file=sys.stderr)
+        print("\n===== RAW RESULTS =====\n")
+        print(format_context(hits))
+        return
     answer = await ask(question)
     print("\n===== ANSWER =====\n")
     print(answer)

@@ -3,16 +3,15 @@
 # Usage:
 #   ./run.sh                      # câu mặc định
 #   ./run.sh "giá xăng hôm nay"  # câu tuỳ ý
+#   ./run.sh --raw "..."          # chỉ trả kết quả search, bỏ qua LLM
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 DEFAULT_Q="giá vàng SJC hôm nay"
 
 if [ "$#" -eq 0 ]; then
-  Q="${DEFAULT_Q}"
-else
-  Q="$*"
+  set -- "${DEFAULT_Q}"
 fi
 
 cd "${DIR}"
-exec docker compose exec -T api python3 websearch.py "${Q}"
+exec docker compose exec -T api python3 websearch.py "$@"
