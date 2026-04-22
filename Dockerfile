@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir httpx openai fastapi uvicorn
+RUN pip install --no-cache-dir httpx openai fastapi uvicorn trafilatura
 
 ENV SEARXNG_URL=http://searxng:8080
 

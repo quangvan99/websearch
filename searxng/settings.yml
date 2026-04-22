@@ -19,3 +19,23 @@ search:
 
 ui:
   static_use_hash: true
+
+engines:
+  - name: google
+    disabled: false
+    timeout: 6.0
+  - name: bing
+    disabled: false
+    timeout: 6.0
+  - name: wikipedia
+    disabled: false
+    timeout: 6.0
+  - name: qwant
+    disabled: false
+    timeout: 6.0
+  - name: mojeek
+    disabled: false
+    timeout: 6.0
+  - name: yahoo
+    disabled: false
+    timeout: 6.0
