@@ -2,8 +2,7 @@
 FastAPI server wrap websearch.ask() thành HTTP API.
 
 Run:
-    ./server.sh                         # uvicorn 0.0.0.0:8000
-    API_PORT=9000 ./server.sh           # port tuỳ chọn
+    ./start.sh
 """
 
 from fastapi import FastAPI, HTTPException
@@ -31,10 +30,10 @@ def health():
 
 
 @app.post("/", response_model=SearchResp)
-def do_search(req: SearchReq):
+async def do_search(req: SearchReq):
     q = req.question.strip()
     if not q:
         raise HTTPException(400, "question is empty")
     if req.raw:
-        return SearchResp(question=q, hits=search(q))
-    return SearchResp(question=q, answer=ask(q))
+        return SearchResp(question=q, hits=await search(q))
+    return SearchResp(question=q, answer=await ask(q))
