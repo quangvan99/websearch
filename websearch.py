@@ -15,15 +15,15 @@ from openai import OpenAI
 
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8888")
 CLAUDIBLE_BASE_URL = "https://claudible.io/v1"
-CLAUDIBLE_KEY = os.environ.get(
-    "CLAUDIBLE_KEY",
-    "sk-6341fd2e6ac2e832574d06190f318f607f5cfe51011258b77cdc83e2aa144c87",
+CLAUDIBLE_KEY = (
+    os.environ.get("CLAUDIBLE_KEY")
+    or "sk-6341fd2e6ac2e832574d06190f318f607f5cfe51011258b77cdc83e2aa144c87"
 )
-CLAUDIBLE_MODEL = os.environ.get("CLAUDIBLE_MODEL", "gpt-5.4-mini")
+CLAUDIBLE_MODEL = os.environ.get("CLAUDIBLE_MODEL") or "gpt-5.4-mini"
 
 _http = httpx.Client(
     headers={"User-Agent": "curl/8.5.0", "Accept": "*/*"},
-    timeout=120.0,
+    timeout=300.0,
 )
 client = OpenAI(
     base_url=CLAUDIBLE_BASE_URL,

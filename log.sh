@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Xem log container searxng. -f để follow.
+# Xem log docker compose. ./log.sh -f để follow. ./log.sh <service> để lọc.
 set -euo pipefail
 
-NAME="searxng"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "${DIR}"
 
 if [ "${1:-}" = "-f" ] || [ "${1:-}" = "--follow" ]; then
-  docker logs -f --tail 100 "${NAME}"
-else
-  docker logs --tail 200 "${NAME}"
+  shift
+  exec docker compose logs -f --tail 100 "$@"
 fi
+exec docker compose logs --tail 200 "$@"

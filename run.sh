@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Chạy websearch.py với câu hỏi. Mặc định: "giá vàng SJC hôm nay".
+# Exec websearch.py bên trong container api. Mặc định: "giá vàng SJC hôm nay".
 # Usage:
-#   ./run.sh                         # dùng câu mặc định
-#   ./run.sh "giá xăng hôm nay"     # câu tuỳ ý
+#   ./run.sh                      # câu mặc định
+#   ./run.sh "giá xăng hôm nay"  # câu tuỳ ý
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -14,4 +14,5 @@ else
   Q="$*"
 fi
 
-exec python3 "${DIR}/websearch.py" "${Q}"
+cd "${DIR}"
+exec docker compose exec -T api python3 websearch.py "${Q}"
