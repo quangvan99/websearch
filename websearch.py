@@ -16,27 +16,52 @@ import httpx
 import trafilatura
 from openai import AsyncOpenAI
 
-SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8888")
-CLAUDIBLE_BASE_URL = "https://claudible.io/v1"
-CLAUDIBLE_KEY = (
-    os.environ.get("CLAUDIBLE_KEY")
-    or "sk-6341fd2e6ac2e832574d06190f318f607f5cfe51011258b77cdc83e2aa144c87"
-)
-CLAUDIBLE_MODEL = os.environ.get("CLAUDIBLE_MODEL") or "gpt-5.4-mini"
-SEARCH_CACHE_TTL = float(os.environ.get("SEARCH_CACHE_TTL", "600"))
-FETCH_CACHE_TTL = float(os.environ.get("FETCH_CACHE_TTL", "3600"))
-FETCH_TIMEOUT = float(os.environ.get("WEBSEARCH_FETCH_TIMEOUT", "8"))
-FETCH_DEFAULT = os.environ.get("WEBSEARCH_FETCH", "1") not in ("0", "false", "False", "")
-MAX_CHARS_DEFAULT = int(os.environ.get("WEBSEARCH_MAX_CHARS", "4000"))
+
+class Config:
+    SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8888")
+
+    LLM_BASE_URL = "https://claudible.io/v1"
+    LLM_API_KEY = (
+        os.environ.get("CLAUDIBLE_KEY")
+        or "sk-6341fd2e6ac2e832574d06190f318f607f5cfe51011258b77cdc83e2aa144c87"
+    )
+    LLM_MODEL = os.environ.get("CLAUDIBLE_MODEL") or "gpt-5.4-mini"
+    LLM_MAX_TOKENS = 4096
+
+    SEARCH_CACHE_TTL = float(os.environ.get("SEARCH_CACHE_TTL", "600"))
+    FETCH_CACHE_TTL = float(os.environ.get("FETCH_CACHE_TTL", "3600"))
+
+    SEARCH_TIMEOUT = 30.0
+    FETCH_TIMEOUT = float(os.environ.get("WEBSEARCH_FETCH_TIMEOUT", "8"))
+    HTTP_TIMEOUT = 300.0
+
+    FETCH_DEFAULT = os.environ.get("WEBSEARCH_FETCH", "1") not in ("0", "false", "False", "")
+    MAX_CHARS_DEFAULT = int(os.environ.get("WEBSEARCH_MAX_CHARS", "4000"))
+    DEFAULT_NUM_RESULTS = 20
+
+    USER_AGENT = "curl/8.5.0"
+    SEARCH_LANGUAGE = "vi"
+
+    HTTP_MAX_CONNECTIONS = 100
+    HTTP_MAX_KEEPALIVE = 20
+
+
+# Backward-compat aliases (server.py imports these)
+FETCH_DEFAULT = Config.FETCH_DEFAULT
+MAX_CHARS_DEFAULT = Config.MAX_CHARS_DEFAULT
+
 
 _http = httpx.AsyncClient(
-    headers={"User-Agent": "curl/8.5.0", "Accept": "*/*"},
-    timeout=300.0,
-    limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+    headers={"User-Agent": Config.USER_AGENT, "Accept": "*/*"},
+    timeout=Config.HTTP_TIMEOUT,
+    limits=httpx.Limits(
+        max_connections=Config.HTTP_MAX_CONNECTIONS,
+        max_keepalive_connections=Config.HTTP_MAX_KEEPALIVE,
+    ),
 )
 client = AsyncOpenAI(
-    base_url=CLAUDIBLE_BASE_URL,
-    api_key=CLAUDIBLE_KEY,
+    base_url=Config.LLM_BASE_URL,
+    api_key=Config.LLM_API_KEY,
     http_client=_http,
 )
 
@@ -46,19 +71,19 @@ _fetch_cache: dict[str, tuple[float, str | None]] = {}
 _fetch_lock = asyncio.Lock()
 
 
-async def search(q: str, n: int = 6) -> list[dict]:
+async def search(q: str, n: int = Config.DEFAULT_NUM_RESULTS) -> list[dict]:
     key = (q.strip().lower(), n)
     now = time.monotonic()
     async with _cache_lock:
         hit = _search_cache.get(key)
-        if hit and now - hit[0] < SEARCH_CACHE_TTL:
+        if hit and now - hit[0] < Config.SEARCH_CACHE_TTL:
             return hit[1]
 
     r = await _http.get(
-        f"{SEARXNG_URL}/search",
-        params={"q": q, "format": "json", "language": "vi"},
-        headers={"User-Agent": "curl/8.5.0"},
-        timeout=30.0,
+        f"{Config.SEARXNG_URL}/search",
+        params={"q": q, "format": "json", "language": Config.SEARCH_LANGUAGE},
+        headers={"User-Agent": Config.USER_AGENT},
+        timeout=Config.SEARCH_TIMEOUT,
     )
     r.raise_for_status()
     results = (r.json().get("results") or [])[:n]
@@ -72,11 +97,11 @@ async def fetch_page(url: str) -> str | None:
     now = time.monotonic()
     async with _fetch_lock:
         hit = _fetch_cache.get(url)
-        if hit and now - hit[0] < FETCH_CACHE_TTL:
+        if hit and now - hit[0] < Config.FETCH_CACHE_TTL:
             return hit[1]
     text: str | None = None
     try:
-        r = await _http.get(url, timeout=FETCH_TIMEOUT, follow_redirects=True)
+        r = await _http.get(url, timeout=Config.FETCH_TIMEOUT, follow_redirects=True)
         r.raise_for_status()
         text = trafilatura.extract(
             r.text,
@@ -113,7 +138,11 @@ def format_context(hits: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-async def ask(question: str, fetch: bool = FETCH_DEFAULT, max_chars: int = MAX_CHARS_DEFAULT) -> str:
+async def ask(
+    question: str,
+    fetch: bool = Config.FETCH_DEFAULT,
+    max_chars: int = Config.MAX_CHARS_DEFAULT,
+) -> str:
     print(f"[1] search: {question}", file=sys.stderr)
     hits = await search(question)
     if not hits:
@@ -138,12 +167,12 @@ async def ask(question: str, fetch: bool = FETCH_DEFAULT, max_chars: int = MAX_C
 
     print("[2] calling claudible.io...", file=sys.stderr)
     resp = await client.chat.completions.create(
-        model=CLAUDIBLE_MODEL,
+        model=Config.LLM_MODEL,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": question},
         ],
-        max_tokens=4096,
+        max_tokens=Config.LLM_MAX_TOKENS,
     )
     return resp.choices[0].message.content
 
@@ -151,8 +180,8 @@ async def ask(question: str, fetch: bool = FETCH_DEFAULT, max_chars: int = MAX_C
 async def _main():
     args = sys.argv[1:]
     raw = False
-    fetch = FETCH_DEFAULT
-    max_chars = MAX_CHARS_DEFAULT
+    fetch = Config.FETCH_DEFAULT
+    max_chars = Config.MAX_CHARS_DEFAULT
     rest: list[str] = []
     i = 0
     while i < len(args):
