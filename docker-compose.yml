@@ -1,10 +1,7 @@
 services:
   searxng:
     image: searxng/searxng
-    container_name: searxng
     restart: unless-stopped
-    ports:
-      - "${SEARXNG_PORT:-8888}:8080"
     volumes:
       - ./searxng:/etc/searxng
     environment:
@@ -13,16 +10,21 @@ services:
 
   api:
     build: .
-    container_name: websearch-api
     restart: unless-stopped
     ports:
-      - "${API_PORT:-8899}:8899"
+      - "${API_PORT:-18899}:8899"
     volumes:
       - .:/app
     environment:
-      SEARXNG_URL: http://searxng:8080
-      CLAUDIBLE_KEY: ${CLAUDIBLE_KEY:-}
-      CLAUDIBLE_MODEL: ${CLAUDIBLE_MODEL:-gpt-5.4-mini}
-    command: uvicorn server:app --host 0.0.0.0 --port 8899 --workers 4
+      SEARXNG_URL: ${SEARXNG_URL:-http://host.docker.internal:8888}
+      WEBSEARCH_SEARCH_TIMEOUT_S: ${WEBSEARCH_SEARCH_TIMEOUT_S:-8}
+      WEBSEARCH_HTTP_TIMEOUT_S: ${WEBSEARCH_HTTP_TIMEOUT_S:-12}
+      WEBSEARCH_CACHE_TTL_S: ${WEBSEARCH_CACHE_TTL_S:-180}
+      WEBSEARCH_DEFAULT_LANGUAGE: ${WEBSEARCH_DEFAULT_LANGUAGE:-all}
+      WEBSEARCH_DEFAULT_ENGINES: ${WEBSEARCH_DEFAULT_ENGINES:-startpage,bing}
+      WEBSEARCH_FALLBACK_ENGINES: ${WEBSEARCH_FALLBACK_ENGINES:-bing,wikipedia}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: uvicorn server:app --host 0.0.0.0 --port 8899 --workers 2
     depends_on:
       - searxng

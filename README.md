@@ -1,190 +1,89 @@
-# websearch
+# Vecura Web Search Plugin
 
-Tool hỏi đáp qua SearXNG local + LLM (claudible.io), đóng gói bằng **docker compose** (2 service: `searxng` + `api`).
+`web_search` is the discovery-only search plugin used by `vecura-agents-core`.
+It does one thing: query SearXNG and return normalized hits fast.
 
-Pipeline: `SearXNG → fetch trang (trafilatura) → LLM`. Việc fetch full text giúp ngữ cảnh phong phú hơn hẳn so với snippet ~1 dòng mà SearXNG trả về.
+What it does:
+- Provider: `searxng`
+- Output: `title`, `url`, `snippet`, `published_date`, `score`, `latency_ms`
+- Endpoint: `POST /search`
 
-## Yêu cầu
+What it does not do:
+- No LLM answer generation
+- No page fetching
+- No content extraction
 
-- Docker + Docker Compose v2
+That split is intentional: full-page fetching belongs to `web_fetch` in core.
 
-## Sử dụng
-
-### 1. Khởi động (`./start.sh`)
-
-Build image và start cả 2 container. Code host được mount vào `/app` nên sửa là hot-reload.
+## Run
 
 ```bash
 ./start.sh
+./log.sh -f
 ```
 
-**Output:**
-```
- Image websearch-api Built
- Container searxng Started
- Container websearch-api Started
-[wait] searxng http://localhost:8888 ...
-[ok] searxng ready
-[wait] api http://localhost:8899 ...
-[ok] api ready: http://localhost:8899
-```
+Services:
+- SearXNG: `http://localhost:8888`
+- API: `http://localhost:18899`
 
-### 2. Hỏi qua CLI (`./run.sh`)
-
-Chạy `websearch.py` **bên trong container api** (qua `docker compose exec`). Mặc định: `"giá vàng SJC hôm nay"`.
+## Query
 
 ```bash
-./run.sh                                 # câu mặc định (fetch ON + LLM)
-./run.sh "giá xăng RON 95 hôm nay"       # câu tuỳ ý
-./run.sh --raw "..."                     # chỉ kết quả search, bỏ qua LLM
-./run.sh --no-fetch "..."                # tắt trafilatura (chỉ snippet)
-./run.sh --max-chars 8000 "..."          # cắt mỗi trang N ký tự (0 = không cắt)
-./run.sh --raw --no-fetch "..."          # snippet thô nhất
+./run.sh "latest PostgreSQL 17 release notes"
 ```
 
-**Các flag:**
-
-| Flag | Default | Mô tả |
-|---|---|---|
-| `--raw` | off | Không gọi LLM, in thẳng kết quả search |
-| `--fetch` / `--no-fetch` | `--fetch` (ON) | Bật/tắt lấy full text trang bằng trafilatura |
-| `--max-chars N` | `4000` | Cắt mỗi trang N ký tự trước khi đưa vào context/LLM. `0` = giữ nguyên |
-
-**Input:** câu hỏi bằng tiếng Việt (hoặc tiếng Anh).
-
-**Output:** câu trả lời kèm mục `## Nguồn`.
-
-```
-[1] search: giá vàng SJC hôm nay
-    got 6 results
-[1b] fetching pages (max_chars=4000)...
-    fetched 4/6 pages
-[2] calling claudible.io...
-
-===== ANSWER =====
-
-- Vàng SJC 1L: mua 168.100.000đ/lượng, bán 170.600.000đ/lượng [2]
-- Vàng SJC 5 chỉ: mua 168.100.000đ/lượng, bán 170.620.000đ/lượng [2]
-
-## Nguồn
-[2] Giá Vàng Online - SJC — https://sjc.com.vn/gia-vang-online
-```
-
-### 3. HTTP API
-
-API chạy ở `http://localhost:8899`.
-
-#### `GET /health`
+Or call the API directly:
 
 ```bash
-curl http://localhost:8899/health
+curl -s http://localhost:18899/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "latest PostgreSQL 17 release notes official",
+    "limit": 5,
+    "language": "en"
+  }' | jq .
 ```
 
-**Output:**
-```json
-{"status":"ok"}
-```
+Example response:
 
-#### `POST /`
-
-Body JSON:
-
-| Field | Type | Default | Mô tả |
-|---|---|---|---|
-| `question` | string | *required* | Câu hỏi |
-| `raw` | bool | `false` | `true` → chỉ trả hits từ SearXNG (không gọi LLM) |
-| `fetch` | bool | `true` | Lấy full text trang bằng trafilatura. Áp dụng cho cả `raw=true` (hits sẽ có field `full_text`) và chế độ LLM |
-| `max_chars` | int | `4000` | Cắt mỗi trang N ký tự. `0` = giữ nguyên |
-
-**Ví dụ 1 — có LLM trả lời:**
-
-```bash
-curl -X POST http://localhost:8899/ \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"giá vàng SJC hôm nay"}'
-```
-
-**Output:**
 ```json
 {
-  "question": "giá vàng SJC hôm nay",
-  "answer": "Theo SJC, vàng miếng SJC 1L: mua 168.100.000đ, bán 170.600.000đ/lượng [3]...\n\n## Nguồn\n[3] SJC — https://sjc.com.vn/gia-vang-online",
-  "hits": null
-}
-```
-
-**Ví dụ 2 — raw hits kèm full text (không qua LLM):**
-
-```bash
-curl -X POST http://localhost:8899/ \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"giá vàng SJC hôm nay","raw":true,"fetch":true,"max_chars":3000}'
-```
-
-**Output:**
-```json
-{
-  "question": "giá vàng SJC hôm nay",
-  "answer": null,
+  "question": "latest PostgreSQL 17 release notes official",
+  "provider": "searxng",
+  "total": 5,
+  "latency_ms": 412,
   "hits": [
     {
-      "title": "SJC: Trang Chủ ...",
-      "url": "https://sjc.com.vn/",
-      "content": "snippet ngắn...",
-      "full_text": "Nội dung đầy đủ đã được trafilatura trích xuất (đã cắt 3000 ký tự)..."
+      "title": "PostgreSQL: Documentation: 17: Release 17",
+      "url": "https://www.postgresql.org/docs/17/release-17.html",
+      "snippet": "Release notes for PostgreSQL 17...",
+      "content": "Release notes for PostgreSQL 17...",
+      "score": 12.4,
+      "published_date": null,
+      "engine": "google",
+      "category": "general"
     }
   ]
 }
 ```
 
-Site fetch fail (timeout/chặn bot/JS-only) → `full_text` = `null`, LLM/raw sẽ fallback về `content` snippet.
+## Request Shape
 
-**Ví dụ 3 — tắt fetch, chỉ snippet:**
-
-```bash
-curl -X POST http://localhost:8899/ \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"giá vàng SJC hôm nay","raw":true,"fetch":false}'
+```json
+{
+  "question": "required string",
+  "limit": 8,
+  "engines": ["optional", "engine", "filters"],
+  "categories": ["optional", "category", "filters"],
+  "time_range": "day | week | month | year",
+  "language": "vi | en | all | ..."
+}
 ```
 
-Question rỗng → `HTTP 400`.
+## Env
 
-### 4. Log (`./log.sh`)
-
-Xem log qua `docker compose logs`.
-
-```bash
-./log.sh                 # tail 200 dòng, cả 2 service
-./log.sh -f              # follow live
-./log.sh api             # chỉ service api
-./log.sh -f searxng      # follow service searxng
-```
-
-### 5. Tắt (`./stop.sh`)
-
-```bash
-./stop.sh
-```
-
-**Output:**
-```
- Container websearch-api Removed
- Container searxng Removed
- Network websearch_default Removed
-```
-
-## Biến môi trường
-
-| Var | Default | Ghi chú |
-|---|---|---|
-| `SEARXNG_PORT` | `8888` | Port SearXNG trên host |
-| `API_PORT` | `8899` | Port FastAPI server trên host |
-| `CLAUDIBLE_KEY` | hard-coded trong `websearch.py` | API key claudible.io |
-| `CLAUDIBLE_MODEL` | `gpt-5.4-mini` | Model dùng để trả lời |
-| `WEBSEARCH_FETCH` | `1` | `0` để mặc định tắt trafilatura |
-| `WEBSEARCH_MAX_CHARS` | `4000` | Cắt mỗi trang N ký tự |
-| `WEBSEARCH_FETCH_TIMEOUT` | `8` | Timeout (giây) cho mỗi URL fetch |
-| `SEARCH_CACHE_TTL` | `600` | TTL (giây) cache kết quả SearXNG |
-| `FETCH_CACHE_TTL` | `3600` | TTL (giây) cache HTML đã extract theo URL |
-
-Trong container, `SEARXNG_URL` được compose set cứng thành `http://searxng:8080` (DNS nội bộ).
+- `SEARXNG_URL`
+- `WEBSEARCH_SEARCH_TIMEOUT_S`
+- `WEBSEARCH_HTTP_TIMEOUT_S`
+- `WEBSEARCH_CACHE_TTL_S`
+- `WEBSEARCH_DEFAULT_LANGUAGE`
